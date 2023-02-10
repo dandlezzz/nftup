@@ -38,7 +38,6 @@ export function App () {
 
       if (dataStore.manifestPath != null) {
         updateDataStore(dataStore)
-        // setStage(STAGE_REPORTING)
       }
     }
     ipcRenderer.on('uploadProgress', handleUploadProgress)

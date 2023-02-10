@@ -7,7 +7,7 @@ const Store = require('electron-store')
 const fs = require('fs')
 const { AddressLookupTableInstruction } = require('@solana/web3.js')
 const manifest = `${app.getPath('appData')}/fini_manifest.json`;
-const logFile = `${app.getPath('appData')}/log.txt`;
+const logFile = `${app.getPath('appData')}/fini_log.txt`;
 
 const endpoint = 'https://api.nft.storage'
 const maxRetries = 10
@@ -48,28 +48,7 @@ const getDirectories = source =>
     .filter(dirent => dirent.isDirectory())
     .map(dirent => dirent.name)
 
-function updateManifest(sub, cid) {
-  let data = {}
 
-  if (fs.existsSync(manifest)) {
-    const fileContent = fs.readFileSync(manifest);
-    data = JSON.parse(fileContent);
-  } else {
-    fs.writeFileSync(manifest, "{}");
-    const fileContent = fs.readFileSync(manifest);
-    data = JSON.parse(fileContent);
-  }
-  data[dataStore.dirSet.name] = {
-    ...data[dataStore.dirSet.name],
-    ...{
-      [sub.name]: cid
-    }
-  }
-
-  appendLog(`adding to manifest: ${sub.name} - ${cid}`)
-  fs.writeFileSync(manifest, JSON.stringify(data, null, 2));
-  dataStore.manifest = data;
-}
 
 function createWindow() {
   const store = new Store({ schema: { apiToken: { type: 'string' } } })
@@ -124,7 +103,30 @@ function createWindow() {
     return { action: 'deny' }
   })
 
-  // mainWindow.webContents.openDevTools()
+  function updateManifest(sub, cid) {
+    let data = {}
+
+    if (fs.existsSync(manifest)) {
+      const fileContent = fs.readFileSync(manifest);
+      data = JSON.parse(fileContent);
+    } else {
+      fs.writeFileSync(manifest, "{}");
+      const fileContent = fs.readFileSync(manifest);
+      data = JSON.parse(fileContent);
+    }
+    data[dataStore.dirSet.name] = {
+      ...data[dataStore.dirSet.name],
+      ...{
+        [sub.name]: cid
+      }
+    }
+
+    appendLog(`adding to manifest: ${sub.name} - ${cid}`)
+    fs.writeFileSync(manifest, JSON.stringify(data, null, 2));
+    dataStore.manifestPath = manifest;
+
+    sendUploadProgress(dataStore)
+  } // mainWindow.webContents.openDevTools()
 
   ipcMain.handle('setApiToken', (_, token) => store.set('apiToken', token))
   ipcMain.handle('hasApiToken', () => Boolean(store.get('apiToken')))
@@ -191,17 +193,21 @@ function createWindow() {
       } catch (err) {
         // TODO: set error
         console.error(err)
-        return sendUploadProgress({ error: `reading files: ${err.message}` })
+        dataStore.error = err.message
+        appendLog(`error: ${err.message}`)
+        return sendUploadProgress(dataStore)
       }
 
       let cid, car
       try {
-        ;({ cid, car } = files.length === 1 && paths[0].endsWith(files[0].name)
+        ; ({ cid, car } = files.length === 1 && paths[0].endsWith(files[0].name)
           ? await NFTStorage.encodeBlob(files[0])
           : await NFTStorage.encodeDirectory(files))
       } catch (err) {
         console.error(err)
-        return sendUploadProgress({ error: `packing files: ${err.message}` })
+        dataStore.error = err.message
+        appendLog(`error: ${err.message}`)
+        return sendUploadProgress(dataStore)
       }
 
       try {
@@ -219,10 +225,11 @@ function createWindow() {
           maxRetries
         })
         updateManifest(sub, cid.toString())
-        sendUploadProgress({ manifestPath: manifest })
       } catch (err) {
         console.error(err)
-        return sendUploadProgress({ error: `storing files: ${err.message}` })
+        dataStore.error = err.message
+        appendLog(`error: ${err.message}`)
+        return sendUploadProgress(dataStore)
       } finally {
         if (car && car.blockstore && car.blockstore.close) {
           try {
