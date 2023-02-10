@@ -59,15 +59,14 @@ function updateManifest(sub, cid) {
     const fileContent = fs.readFileSync(manifest);
     data = JSON.parse(fileContent);
   }
-  console.log({ data }, 'uhh what?')
   data[dataStore.dirSet.name] = {
     ...data[dataStore.dirSet.name],
     ...{
       [sub.name]: cid
     }
   }
-  console.log({ data }, 'THIS THING')
 
+  appendLog(`adding to manifest: ${sub.name} - ${cid}`)
   fs.writeFileSync(manifest, JSON.stringify(data, null, 2));
   dataStore.manifest = data;
 }
@@ -162,9 +161,9 @@ function createWindow() {
   }
 
   async function processUploads() {
-    dataStore.dirSet.subdirectories.forEach(async (sub) => {
-      await uploadDir(sub)
-    })
+    for (const sub of dataStore.dirSet.subdirectories) {
+      await uploadDir(sub);
+    }
   }
 
   function pathFromDir(dir) {
@@ -172,6 +171,7 @@ function createWindow() {
   }
 
   async function uploadDir(sub) {
+    appendLog(`beginning upload: ${sub.name}`)
     const token = store.get('apiToken')
     const fullDirPath = pathFromDir(sub.name)
 
@@ -211,7 +211,6 @@ function createWindow() {
           onStoredChunk(size) {
             storedChunks++
             storedBytes += size
-            console.log({ storedBytes, sub: sub.name })
             updateProgress({
               ...sub,
               uploadedBytes: storedBytes
