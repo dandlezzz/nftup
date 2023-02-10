@@ -5,12 +5,74 @@ const { filesFromPath } = require('files-from-path')
 const { NFTStorage } = require('nft.storage')
 const Store = require('electron-store')
 const fs = require('fs')
+const { AddressLookupTableInstruction } = require('@solana/web3.js')
 const manifest = `${app.getPath('appData')}/fini_manifest.json`;
+const logFile = `${app.getPath('appData')}/log.txt`;
 
 const endpoint = 'https://api.nft.storage'
 const maxRetries = 10
 
-function createWindow () {
+const dataStore = {
+  dirSet: {
+    path: '',
+    name: '',
+    subdirectories: [],
+  }
+}
+
+const getDirectorySize = async (dirPath) => {
+  let totalBytes = 0;
+
+  const files = fs.readdirSync(dirPath);
+
+  for (const file of files) {
+    const filePath = path.join(dirPath, file);
+    const stat = fs.statSync(filePath);
+    totalBytes += stat.size;
+  }
+
+  return totalBytes;
+};
+function appendLog(message) {
+  let date = new Date();
+  let timestamp = date.toLocaleString();
+  let logMessage = `[${timestamp}] ${message}`;
+  fs.appendFile(logFile, logMessage + '\n', (err) => {
+    if (err) throw err;
+    console.log(`The message "${message}" was appended to the log.`);
+  });
+}
+
+const getDirectories = source =>
+  fs.readdirSync(source, { withFileTypes: true })
+    .filter(dirent => dirent.isDirectory())
+    .map(dirent => dirent.name)
+
+function updateManifest(sub, cid) {
+  let data = {}
+
+  if (fs.existsSync(manifest)) {
+    const fileContent = fs.readFileSync(manifest);
+    data = JSON.parse(fileContent);
+  } else {
+    fs.writeFileSync(manifest, "{}");
+    const fileContent = fs.readFileSync(manifest);
+    data = JSON.parse(fileContent);
+  }
+  console.log({ data }, 'uhh what?')
+  data[dataStore.dirSet.name] = {
+    ...data[dataStore.dirSet.name],
+    ...{
+      [sub.name]: cid
+    }
+  }
+  console.log({ data }, 'THIS THING')
+
+  fs.writeFileSync(manifest, JSON.stringify(data, null, 2));
+  dataStore.manifest = data;
+}
+
+function createWindow() {
   const store = new Store({ schema: { apiToken: { type: 'string' } } })
 
   const template = [
@@ -44,9 +106,9 @@ function createWindow () {
 
   const mainWindow = new BrowserWindow({
     title: 'NFT UP',
-    width: 880,
-    height: 420,
-    resizable: false,
+    width: 1760,
+    height: 840,
+    resizable: true,
     webPreferences: {
       nodeIntegration: true,
       contextIsolation: false,
@@ -69,39 +131,69 @@ function createWindow () {
   ipcMain.handle('hasApiToken', () => Boolean(store.get('apiToken')))
 
   const sendUploadProgress = p => mainWindow.webContents.send('uploadProgress', p)
+  const sendDirSetConfirmed = p => mainWindow.webContents.send('dirSetConfirmed', p)
 
-  ipcMain.on('uploadFiles', async (event, paths, name) => {
-    /** @type {string} */
+  ipcMain.on('setDir', async (event, path, name) => {
+    appendLog(`dir set: path - ${path}, name - ${name}`)
+    dataStore.dirSet.path = path
+    dataStore.dirSet.name = name
+    const subdirectories = []
+    await getDirectories(path).forEach(async (sub) => await subdirectories.push({
+      name: sub,
+      totalBytes: await getDirectorySize(path + "/" + sub),
+      uploadedBytes: 0,
+    }))
+    dataStore.dirSet.subdirectories = subdirectories
+    appendLog(`subdirs: ${JSON.stringify(dataStore.dirSet.subdirectories)}`)
+
+
+
+    sendDirSetConfirmed(dataStore)
+    processUploads()
+
+  })
+
+  async function updateProgress(sub) {
+    const subI = dataStore.dirSet.subdirectories.findIndex(asubd => asubd.name == sub.name)
+    dataStore.dirSet.subdirectories[subI] = sub
+
+    appendLog(`updating subdirectory: ${JSON.stringify(sub)}`)
+    sendUploadProgress(dataStore)
+  }
+
+  async function processUploads() {
+    dataStore.dirSet.subdirectories.forEach(async (sub) => {
+      await uploadDir(sub)
+    })
+  }
+
+  function pathFromDir(dir) {
+    return dataStore.dirSet.path + "/" + dir
+  }
+
+  async function uploadDir(sub) {
     const token = store.get('apiToken')
+    const fullDirPath = pathFromDir(sub.name)
+
+    const dir = fs.readdirSync(fullDirPath)
     if (!token) {
       return sendUploadProgress({ error: 'missing API token' })
     }
 
     try {
-      mainWindow.setProgressBar(2)
-      sendUploadProgress({ statusText: 'Reading files...' })
       let totalBytes = 0
       const files = []
       try {
-        let pathPrefix
-        // if a single directory, yield files without the directory name in them
-        if (paths.length === 1 && (await fs.promises.stat(paths[0])).isDirectory) {
-          pathPrefix = paths[0]
-        }
-
-        for (const path of paths) {
-          for await (const file of filesFromPath(path, { pathPrefix })) {
-            files.push(file)
-            totalBytes += file.size
-            sendUploadProgress({ totalBytes, totalFiles: files.length })
-          }
+        for await (const file of filesFromPath(fullDirPath)) {
+          files.push(file)
+          totalBytes += file.size
         }
       } catch (err) {
+        // TODO: set error
         console.error(err)
         return sendUploadProgress({ error: `reading files: ${err.message}` })
       }
 
-      sendUploadProgress({ statusText: 'Packing files...' })
       let cid, car
       try {
         ;({ cid, car } = files.length === 1 && paths[0].endsWith(files[0].name)
@@ -113,31 +205,22 @@ function createWindow () {
       }
 
       try {
-        let storedChunks = 0
-        let storedBytes = 0.01
-        sendUploadProgress({ statusText: 'Storing files...', storedChunks, storedBytes })
+        let storedChunks = 0;
+        let storedBytes = 0;
         await NFTStorage.storeCar({ endpoint, token }, car, {
-          onStoredChunk (size) {
-            console.log({ size }, 'osc')
+          onStoredChunk(size) {
             storedChunks++
             storedBytes += size
-            sendUploadProgress({ storedBytes, storedChunks })
-            mainWindow.setProgressBar(storedBytes / totalBytes)
+            console.log({ storedBytes, sub: sub.name })
+            updateProgress({
+              ...sub,
+              uploadedBytes: storedBytes
+            })
           },
           maxRetries
         })
-        if (fs.existsSync(manifest)) {
-          const fileContent = fs.readFileSync(manifest);
-          data = JSON.parse(fileContent);
-        } else {
-          fs.writeFileSync(manifest, "{}");
-          const fileContent = fs.readFileSync(manifest);
-          data = JSON.parse(fileContent);
-        }
-
-        data[name] = cid.toString()
-        fs.writeFileSync(manifest, JSON.stringify(data, null, 2));
-        sendUploadProgress({ manifestPath: manifest, storedBytes: totalBytes, statusText: 'Done!' })
+        updateManifest(sub, cid.toString())
+        sendUploadProgress({ manifestPath: manifest })
       } catch (err) {
         console.error(err)
         return sendUploadProgress({ error: `storing files: ${err.message}` })
@@ -153,7 +236,7 @@ function createWindow () {
     } finally {
       mainWindow.setProgressBar(-1)
     }
-  })
+  }
 }
 
 // This method will be called when Electron has finished
