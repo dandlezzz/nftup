@@ -12,11 +12,13 @@ const STAGE_UPLOADING = 'uploading'
 const STAGE_ERRORING = 'erroring'
 const STAGE_REPORTING = 'reporting'
 
+
 export function App () {
   const [stage, setStage] = useState(STAGE_PICKING)
-  const [filePaths, setFilePaths] = useState([])
+  const [dirPaths, setdirPaths] = useState([])
   const [statusText, setStatusText] = useState('')
   const [storedBytes, setStoredBytes] = useState(0)
+  const [manifestPath, setManifestPath] = useState('')
   const [storedChunks, setStoredChunks] = useState(0)
   const [totalBytes, setTotalBytes] = useState(0)
   const [totalFiles, setTotalFiles] = useState(0)
@@ -35,8 +37,9 @@ export function App () {
       if (progress.storedChunks != null) setStoredChunks(progress.storedChunks)
       if (progress.totalBytes != null) setTotalBytes(progress.totalBytes)
       if (progress.totalFiles != null) setTotalFiles(progress.totalFiles)
-      if (progress.cid != null) {
-        setCid(progress.cid)
+
+      if (progress.manifestPath != null) {
+        setManifestPath(progress.manifestPath)
         setStage(STAGE_REPORTING)
       }
     }
@@ -55,7 +58,7 @@ export function App () {
   if (stage === STAGE_REPORTING) {
     return (
       <Layout>
-        <Reporter cid={cid} onClose={() => setStage(STAGE_PICKING)} />
+        <Reporter manifestPath={manifestPath} onClose={() => setStage(STAGE_PICKING)} />
       </Layout>
     )
   }
@@ -77,8 +80,7 @@ export function App () {
   if (stage === STAGE_AUTHENTICATING) {
     const onToken = async token => {
       await ipcRenderer.invoke('setApiToken', token)
-      setStage(STAGE_UPLOADING)
-      ipcRenderer.send('uploadFiles', filePaths)
+      setStage(STAGE_PICKING)
     }
     return (
       <Layout>
@@ -87,16 +89,13 @@ export function App () {
     )
   }
 
-  const onPickFiles = async files => {
-    const filePaths = files.map(f => f.path)
-    setFilePaths(filePaths)
-    setError('')
-    setStatusText('Reading files...')
-    setStoredBytes(0)
-    setStoredChunks(0)
-    setTotalBytes(files.reduce((total, f) => total + f.size, 0))
-    setTotalFiles(files.length)
+  const handleSingledirUpload = async dir => {
+
+    const path = dir.path
+    setdirPaths(dirPaths)
+    setStatusText('Reading dirs...')
     setCid('')
+
 
     const hasToken = await ipcRenderer.invoke('hasApiToken')
     if (!hasToken) {
@@ -104,7 +103,16 @@ export function App () {
     }
 
     setStage(STAGE_UPLOADING)
-    ipcRenderer.send('uploadFiles', filePaths)
+    ipcRenderer.send('uploadFiles', [path], dir.name)
+  }
+
+  const onPickFiles = async dirs => {
+    setTotalFiles(dirs.length)
+    setStoredBytes(0)
+    setStoredChunks(0)
+    setTotalBytes(dirs.reduce((total, f) => total + f.size, 0))
+    dirs.forEach(handleSingledirUpload)
+    setError('')
   }
   return (
     <Layout>

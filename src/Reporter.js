@@ -1,16 +1,12 @@
 import { CloseButton } from './CloseButton.js'
 
-export function Reporter ({ cid, onClose }) {
+export function Reporter ({ manifestPath, onClose }) {
   return (
     <div className='relative ma4 flex-auto flex items-center'>
       <div className='absolute top-0 right-0'><CloseButton onClick={onClose} /></div>
       <div className='w-100 pa4 ba bg-white'>
-        <p className='f4 b mv1'>CID <CopyButton text={cid} title='Copy CID to clipboard' /></p>
-        <p className='f6 mt1 mb3 truncate'>{cid}</p>
-        <p className='f4 b mv1'>IPFS URL <CopyButton text={`ipfs://${cid}`} title='Copy IPFS URL to clipboard' /></p>
-        <p className='f6 mt1 mb3 truncate'>ipfs://{cid}</p>
-        <p className='f4 b mv1'>Gateway URL <CopyButton text={`https://nftstorage.link/ipfs/${cid}`} title='Copy gateway URL to clipboard' /></p>
-        <a className='db f6 mt1 mb3 black truncate' href={`https://nftstorage.link/ipfs/${cid}`} target='_blank' rel='noreferrer'>https://nftstorage.link/ipfs/{cid}</a>
+        <p className='f4 b mv1'>Manifest Path <CopyButton text={manifestPath} title='Copy manifest path to clipboard' /></p>
+        <p className='f6 mt1 mb3 truncate'>{manifestPath}</p>
       </div>
     </div>
   )

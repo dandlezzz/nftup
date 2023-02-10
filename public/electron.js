@@ -5,6 +5,7 @@ const { filesFromPath } = require('files-from-path')
 const { NFTStorage } = require('nft.storage')
 const Store = require('electron-store')
 const fs = require('fs')
+const manifest = `${app.getPath('appData')}/fini_manifest.json`;
 
 const endpoint = 'https://api.nft.storage'
 const maxRetries = 10
@@ -69,7 +70,7 @@ function createWindow () {
 
   const sendUploadProgress = p => mainWindow.webContents.send('uploadProgress', p)
 
-  ipcMain.on('uploadFiles', async (event, paths) => {
+  ipcMain.on('uploadFiles', async (event, paths, name) => {
     /** @type {string} */
     const token = store.get('apiToken')
     if (!token) {
@@ -117,6 +118,7 @@ function createWindow () {
         sendUploadProgress({ statusText: 'Storing files...', storedChunks, storedBytes })
         await NFTStorage.storeCar({ endpoint, token }, car, {
           onStoredChunk (size) {
+            console.log({ size }, 'osc')
             storedChunks++
             storedBytes += size
             sendUploadProgress({ storedBytes, storedChunks })
@@ -124,7 +126,18 @@ function createWindow () {
           },
           maxRetries
         })
-        sendUploadProgress({ cid: cid.toString(), storedBytes: totalBytes, statusText: 'Done!' })
+        if (fs.existsSync(manifest)) {
+          const fileContent = fs.readFileSync(manifest);
+          data = JSON.parse(fileContent);
+        } else {
+          fs.writeFileSync(manifest, "{}");
+          const fileContent = fs.readFileSync(manifest);
+          data = JSON.parse(fileContent);
+        }
+
+        data[name] = cid.toString()
+        fs.writeFileSync(manifest, JSON.stringify(data, null, 2));
+        sendUploadProgress({ manifestPath: manifest, storedBytes: totalBytes, statusText: 'Done!' })
       } catch (err) {
         console.error(err)
         return sendUploadProgress({ error: `storing files: ${err.message}` })
