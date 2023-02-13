@@ -158,7 +158,6 @@ function createWindow() {
     const subI = dataStore.dirSet.subdirectories.findIndex(asubd => asubd.name == sub.name)
     dataStore.dirSet.subdirectories[subI] = sub
 
-    appendLog(`updating subdirectory: ${JSON.stringify(sub)}`)
     sendUploadProgress(dataStore)
   }
 
@@ -191,7 +190,6 @@ function createWindow() {
           totalBytes += file.size
         }
       } catch (err) {
-        // TODO: set error
         console.error(err)
         dataStore.error = err.message
         appendLog(`error: ${err.message}`)
