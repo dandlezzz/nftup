@@ -191,8 +191,8 @@ function createWindow() {
         }
       } catch (err) {
         console.error(err)
-        dataStore.error = err.message
         appendLog(`error: ${err.message}`)
+        dataStore.error = err.message
         return sendUploadProgress(dataStore)
       }
 
@@ -203,8 +203,8 @@ function createWindow() {
           : await NFTStorage.encodeDirectory(files))
       } catch (err) {
         console.error(err)
-        dataStore.error = err.message
         appendLog(`error: ${err.message}`)
+        dataStore.error = err.message
         return sendUploadProgress(dataStore)
       }
 
@@ -222,11 +222,12 @@ function createWindow() {
           },
           maxRetries
         })
+        appendLog(`upload finished: ${sub.name}`)
         updateManifest(sub, cid.toString())
       } catch (err) {
         console.error(err)
-        dataStore.error = err.message
         appendLog(`error: ${err.message}`)
+        dataStore.error = err.message
         return sendUploadProgress(dataStore)
       } finally {
         if (car && car.blockstore && car.blockstore.close) {
