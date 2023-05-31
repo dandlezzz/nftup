@@ -198,9 +198,7 @@ function createWindow() {
 
       let cid, car
       try {
-        ; ({ cid, car } = files.length === 1 && paths[0].endsWith(files[0].name)
-          ? await NFTStorage.encodeBlob(files[0])
-          : await NFTStorage.encodeDirectory(files))
+        ({ cid, car } = await NFTStorage.encodeBlob(files[0]))
       } catch (err) {
         console.error(err)
         appendLog(`error: ${err.message}`)
