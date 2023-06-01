@@ -228,10 +228,13 @@ function createWindow() {
         dataStore.error = err.message
         return sendUploadProgress(dataStore)
       } finally {
+        appendLog(`closing blockstore`)
         if (car && car.blockstore && car.blockstore.close) {
           try {
-            car.blockstore.close()
+            await car.blockstore.close()
           } catch (err) {
+            appendLog(`failed to close blockstore: ${err.message}`)
+            dataStore.error = err.message
             console.error('failed to close blockstore', err)
           }
         }
